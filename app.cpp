@@ -13,6 +13,9 @@
 #include <vtkImageData.h>
 #include <vtkImageSliceMapper.h>
 #include <vtkImageSlice.h>
+#include <vtkCamera.h>
+#include <vtkImageProperty.h>
+#include <vtkImageStack.h>
 
 class vtkSliderCallback : public vtkCommand
 {
@@ -51,6 +54,7 @@ int main(int argc, char *argv[])
    // Reading DICOM files within directory
    vtkSmartPointer<vtkDICOMImageReader> readerDCM =
        vtkSmartPointer<vtkDICOMImageReader>::New();
+
    readerDCM->SetDirectoryName(folder.c_str());
    readerDCM->Update();
 
@@ -63,44 +67,156 @@ int main(int argc, char *argv[])
    int volumeExtents[6];
    imageData->GetExtent(volumeExtents);
 
+   // AXIAL
    // Slice-Mapping 3D Images to get 2D Mappings
    vtkSmartPointer<vtkImageSliceMapper> imageSliceMapper = vtkSmartPointer<vtkImageSliceMapper>::New();
 
-   imageSliceMapper->SetSliceNumber((volumeExtents[5] - volumeExtents[4]) / 3);
+   imageSliceMapper->SetOrientationToZ();
    imageSliceMapper->SetInputData(imageData);
    imageSliceMapper->Update();
 
-   // Image Slicer Actor
-   vtkSmartPointer<vtkImageSlice> imageSlicer = vtkSmartPointer<vtkImageSlice>::New();
-   imageSlicer->SetMapper(imageSliceMapper);
+   // Extents of the selected slicing direction (Min & Max) - along z so far -
+   int minSlice = imageSliceMapper->GetSliceNumberMinValue();
+   int maxSlice = imageSliceMapper->GetSliceNumberMaxValue();
+
+   std::cout << "[AXIAL BOUNDARIES] : " << minSlice << " ---- " << maxSlice << std::endl;
+
+   imageSliceMapper->SetSliceNumber((maxSlice - minSlice) / 2);
+   imageSliceMapper->Update();
+
+   //SAGITAL
+   // Slice-Mapping 3D Images to get 2D Mappings
+   vtkSmartPointer<vtkImageSliceMapper> imageSliceMapperSagital = vtkSmartPointer<vtkImageSliceMapper>::New();
+
+   imageSliceMapperSagital->SetOrientationToX();
+   imageSliceMapperSagital->SetInputData(imageData);
+   imageSliceMapperSagital->Update();
 
    // Extents of the selected slicing direction (Min & Max) - along z so far -
-   int minSlice = volumeExtents[4];
-   int maxSlice = volumeExtents[5];
+   int minSliceSagital = imageSliceMapperSagital->GetSliceNumberMinValue();
+   int maxSliceSagital = imageSliceMapperSagital->GetSliceNumberMaxValue();
+
+   std::cout << "[SAGITAL BOUNDARIES] : " << minSliceSagital << " ---- " << maxSliceSagital << std::endl;
+
+   imageSliceMapperSagital->SetSliceNumber((maxSliceSagital - minSliceSagital) / 2);
+   imageSliceMapperSagital->Update();
+
+   // CORONAL
+   // Slice-Mapping 3D Images to get 2D Mappings
+   vtkSmartPointer<vtkImageSliceMapper> imageSliceMapperCoronal = vtkSmartPointer<vtkImageSliceMapper>::New();
+
+   imageSliceMapperCoronal->SetOrientationToY();
+   imageSliceMapperCoronal->SetInputData(imageData);
+   imageSliceMapperCoronal->Update();
+
+   // Extents of the selected slicing direction (Min & Max) - along z so far -
+   int minSliceCoronal = imageSliceMapperCoronal->GetSliceNumberMinValue();
+   int maxSliceCoronal = imageSliceMapperCoronal->GetSliceNumberMaxValue();
+
+   std::cout << "[CORONAL BOUNDARIES] : " << minSliceCoronal << " ---- " << maxSliceCoronal << std::endl;
+
+   imageSliceMapperCoronal->SetSliceNumber((maxSliceCoronal - minSliceCoronal) / 2);
+   imageSliceMapperCoronal->Update();
+
+   // Image Slicer Actor
+   // AXIAL
+   vtkSmartPointer<vtkImageSlice> imageSlicer = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicer->SetMapper(imageSliceMapper);
+   imageSlicer->Update();
+
+   // SAGITAL
+   vtkSmartPointer<vtkImageSlice> imageSlicerSagital = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicerSagital->SetMapper(imageSliceMapperSagital);
+
+   imageSlicerSagital->RotateWXYZ(-90, 0, 1, 0);
+   imageSlicerSagital->RotateWXYZ(90, 0, 0, 1);
+
+   imageSlicerSagital->Update();
+
+   // CORONAL
+   vtkSmartPointer<vtkImageSlice> imageSlicerCoronal = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicerCoronal->SetMapper(imageSliceMapperCoronal);
+
+   imageSlicerCoronal->RotateWXYZ(90, 1, 0, 0);
+
+   imageSlicerCoronal->Update();
+
+   // AXIAL BASE
+   vtkSmartPointer<vtkImageSlice> imageSlicerAxial3D = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicerAxial3D->SetMapper(imageSliceMapper);
+   imageSlicerAxial3D->GetProperty()->SetOpacity(0.5);
+
+   imageSlicerAxial3D->RotateWXYZ(45, 1, 1, -1);
+
+   imageSlicerAxial3D->Update();
+
+   // CORONAL BASE
+   vtkSmartPointer<vtkImageSlice> imageSlicerCoronal3D = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicerCoronal3D->SetMapper(imageSliceMapperCoronal);
+   imageSlicerCoronal3D->GetProperty()->SetOpacity(0.5);
+
+   imageSlicerCoronal3D->RotateWXYZ(45, 1, 1, -1);
+
+   imageSlicerCoronal3D->Update();
+
+   // SAGITAL BASE
+   vtkSmartPointer<vtkImageSlice> imageSlicerSagital3D = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicerSagital3D->SetMapper(imageSliceMapperSagital);
+   imageSlicerSagital3D->GetProperty()->SetOpacity(0.5);
+
+   imageSlicerSagital3D->RotateWXYZ(45, 1, 1, -1);
+
+   imageSlicerSagital3D->Update();
 
    // Setup renderers
-   vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
 
+   // AXIAL
+   vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
    renderer->AddViewProp(imageSlicer); // Actor
-   renderer->ResetCamera();
+   renderer->SetViewport(0, 0.5, 0.5, 1);
+
+   // SAGITAL
+   vtkSmartPointer<vtkRenderer> rendererSagital = vtkSmartPointer<vtkRenderer>::New();
+   rendererSagital->AddViewProp(imageSlicerSagital); // Actor
+   rendererSagital->SetViewport(0, 0, 0.5, 0.5);
+
+   // CORONAL
+   vtkSmartPointer<vtkRenderer> rendererCoronal = vtkSmartPointer<vtkRenderer>::New();
+   rendererCoronal->AddViewProp(imageSlicerCoronal); // Actor
+   rendererCoronal->SetViewport(0.5, 0, 1, 0.5);
+
+   // Stack 3D
+   vtkSmartPointer<vtkImageStack> imageStack = vtkSmartPointer<vtkImageStack>::New();
+   imageStack->AddImage(imageSlicerAxial3D);
+   imageStack->AddImage(imageSlicerSagital3D);
+   imageStack->AddImage(imageSlicerCoronal3D);
+
+   imageStack->SetActiveLayer(1);
+
+   // Setup renderers
+   vtkSmartPointer<vtkRenderer> rendererStack = vtkSmartPointer<vtkRenderer>::New();
+   rendererStack->AddViewProp(imageStack);
+   rendererStack->SetViewport(0.5, 0.5, 1, 1);
 
    // Setup render window
    vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
-   renderWindow->SetSize(1000, 1000);
+   renderWindow->SetSize(1200, 1200);
 
    renderWindow->AddRenderer(renderer);
+   renderWindow->AddRenderer(rendererSagital);
+   renderWindow->AddRenderer(rendererCoronal);
+   renderWindow->AddRenderer(rendererStack);
 
    // Setting Window Image Interactor
    vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
        vtkSmartPointer<vtkRenderWindowInteractor>::New();
 
    vtkSmartPointer<vtkInteractorStyleImage> style = vtkSmartPointer<vtkInteractorStyleImage>::New();
-
    renderWindowInteractor->SetInteractorStyle(style);
 
    renderWindowInteractor->SetRenderWindow(renderWindow);
 
-   // Setting Slider Representation
+   // Setting Slider Representation (AXIAL)
    vtkSmartPointer<vtkSliderRepresentation2D> sliderRep =
        vtkSmartPointer<vtkSliderRepresentation2D>::New();
    sliderRep->SetMinimumValue(minSlice);
@@ -117,7 +233,42 @@ int main(int argc, char *argv[])
    sliderRep->SetEndCapLength(0.0005);
    sliderRep->SetEndCapWidth(0.01);
 
+   // Setting Slider Representation (SAGITAL)
+   vtkSmartPointer<vtkSliderRepresentation2D> sliderRepS =
+       vtkSmartPointer<vtkSliderRepresentation2D>::New();
+   sliderRepS->SetMinimumValue(minSliceSagital);
+   sliderRepS->SetMaximumValue(maxSliceSagital);
+   sliderRepS->SetValue((maxSliceSagital - minSliceSagital) / 2);
+   sliderRepS->SetTubeWidth(0.001);
+   sliderRepS->UseBoundsOn();
+   sliderRepS->GetPoint1Coordinate()->SetCoordinateSystemToDisplay();
+   sliderRepS->GetPoint1Coordinate()->SetValue(85, 100);
+   sliderRepS->GetPoint2Coordinate()->SetCoordinateSystemToDisplay();
+   sliderRepS->GetPoint2Coordinate()->SetValue(85, 400);
+   sliderRepS->SetSliderLength(0.0075);
+   sliderRepS->SetSliderWidth(0.01);
+   sliderRepS->SetEndCapLength(0.0005);
+   sliderRepS->SetEndCapWidth(0.01);
+
+   // Setting Slider Representation (CORONAL)
+   vtkSmartPointer<vtkSliderRepresentation2D> sliderRepC =
+       vtkSmartPointer<vtkSliderRepresentation2D>::New();
+   sliderRepC->SetMinimumValue(minSliceCoronal);
+   sliderRepC->SetMaximumValue(maxSliceCoronal);
+   sliderRepC->SetValue((maxSliceCoronal - minSliceCoronal) / 2);
+   sliderRepC->SetTubeWidth(0.001);
+   sliderRepC->UseBoundsOn();
+   sliderRepC->GetPoint1Coordinate()->SetCoordinateSystemToDisplay();
+   sliderRepC->GetPoint1Coordinate()->SetValue(105, 100);
+   sliderRepC->GetPoint2Coordinate()->SetCoordinateSystemToDisplay();
+   sliderRepC->GetPoint2Coordinate()->SetValue(105, 400);
+   sliderRepC->SetSliderLength(0.0075);
+   sliderRepC->SetSliderWidth(0.01);
+   sliderRepC->SetEndCapLength(0.0005);
+   sliderRepC->SetEndCapWidth(0.01);
+
    // Setting Slider Widget
+   //AXIAL
    vtkSmartPointer<vtkSliderWidget> sliderWidget =
        vtkSmartPointer<vtkSliderWidget>::New();
 
@@ -127,12 +278,55 @@ int main(int argc, char *argv[])
    sliderWidget->EnabledOn();
 
    // User Method & Event Handling for the Slider
+   // AXIAL
    vtkSmartPointer<vtkSliderCallback> callback =
        vtkSmartPointer<vtkSliderCallback>::New();
 
    callback->slicer = imageSliceMapper;
 
    sliderWidget->AddObserver(vtkCommand::InteractionEvent, callback);
+
+   // Setting Slider Widget
+   // SAGITAL
+
+   vtkSmartPointer<vtkSliderWidget> sliderWidgetSagital =
+       vtkSmartPointer<vtkSliderWidget>::New();
+
+   sliderWidgetSagital->SetInteractor(renderWindowInteractor);
+   sliderWidgetSagital->SetRepresentation(sliderRepS);
+   sliderWidgetSagital->SetAnimationModeToAnimate();
+   sliderWidgetSagital->EnabledOn();
+
+   // User Method & Event Handling for the Slider
+   // SAGITAL
+
+   vtkSmartPointer<vtkSliderCallback> callbackSagital =
+       vtkSmartPointer<vtkSliderCallback>::New();
+
+   callbackSagital->slicer = imageSliceMapperSagital;
+
+   sliderWidgetSagital->AddObserver(vtkCommand::InteractionEvent, callbackSagital);
+
+   // Setting Slider Widget
+   // CORONAL
+
+   vtkSmartPointer<vtkSliderWidget> sliderWidgetCoronal =
+       vtkSmartPointer<vtkSliderWidget>::New();
+
+   sliderWidgetCoronal->SetInteractor(renderWindowInteractor);
+   sliderWidgetCoronal->SetRepresentation(sliderRepC);
+   sliderWidgetCoronal->SetAnimationModeToAnimate();
+   sliderWidgetCoronal->EnabledOn();
+
+   // User Method & Event Handling for the Slider
+   // CORONAL
+
+   vtkSmartPointer<vtkSliderCallback> callbackCoronal =
+       vtkSmartPointer<vtkSliderCallback>::New();
+
+   callbackCoronal->slicer = imageSliceMapperCoronal;
+
+   sliderWidgetCoronal->AddObserver(vtkCommand::InteractionEvent, callbackCoronal);
 
    // Rendering
 
