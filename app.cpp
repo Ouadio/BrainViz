@@ -1,21 +1,18 @@
-#include <vtkExtractVOI.h>
 #include <iostream>
 #include <vtkSmartPointer.h>
 #include <vtkObjectFactory.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
-#include <vtkActor.h>
 #include <vtkImageViewer2.h>
 #include <vtkDICOMImageReader.h>
 #include <vtkInteractorStyleImage.h>
-#include <vtkActor2D.h>
-#include <vtkTextProperty.h>
-#include <vtkTextMapper.h>
-#include <sstream>
+
 #include <vtkSliderWidget.h>
 #include <vtkSliderRepresentation2D.h>
-#include <vtkProperty.h>
+#include <vtkImageData.h>
+#include <vtkImageSliceMapper.h>
+#include <vtkImageSlice.h>
 
 class vtkSliderCallback : public vtkCommand
 {
@@ -32,11 +29,11 @@ public:
 
       this->z = static_cast<vtkSliderRepresentation *>(sliderWidget->GetRepresentation())->GetValue();
       cout << "[AXIAL] -> Slice : " << z << std::endl;
-      _ImageViewer->SetSlice(z);
+      slicer->SetSliceNumber(z);
    }
 
-   vtkSliderCallback() : _ImageViewer(0) {}
-   vtkImageViewer2 *_ImageViewer;
+   vtkSliderCallback() : slicer(0) {}
+   vtkImageSliceMapper *slicer;
    int z;
 };
 
@@ -59,27 +56,49 @@ int main(int argc, char *argv[])
 
    readerDCM->Print(std::cout);
 
-   // Setting Image Viewer
-   vtkSmartPointer<vtkImageViewer2> imageViewer =
-       vtkSmartPointer<vtkImageViewer2>::New();
+   // Extracting Image Data
+   vtkSmartPointer<vtkImageData> imageData = vtkSmartPointer<vtkImageData>::New();
+   imageData = readerDCM->GetOutput();
 
-   // Axial slicing (By default)
-   imageViewer->SetSliceOrientationToXY();
+   int volumeExtents[6];
+   imageData->GetExtent(volumeExtents);
 
-   imageViewer->SetInputConnection(readerDCM->GetOutputPort());
-   readerDCM->Update();
+   // Slice-Mapping 3D Images to get 2D Mappings
+   vtkSmartPointer<vtkImageSliceMapper> imageSliceMapper = vtkSmartPointer<vtkImageSliceMapper>::New();
 
-   imageViewer->SetSize(1000, 800);
+   imageSliceMapper->SetSliceNumber((volumeExtents[5] - volumeExtents[4]) / 3);
+   imageSliceMapper->SetInputData(imageData);
+   imageSliceMapper->Update();
 
-   // Extents of the selected slicing direction (Min & Max)
-   int minSlice = imageViewer->GetSliceMin();
-   int maxSlice = imageViewer->GetSliceMax();
+   // Image Slicer Actor
+   vtkSmartPointer<vtkImageSlice> imageSlicer = vtkSmartPointer<vtkImageSlice>::New();
+   imageSlicer->SetMapper(imageSliceMapper);
 
-   // Setting Window Interactor
+   // Extents of the selected slicing direction (Min & Max) - along z so far -
+   int minSlice = volumeExtents[4];
+   int maxSlice = volumeExtents[5];
+
+   // Setup renderers
+   vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
+
+   renderer->AddViewProp(imageSlicer); // Actor
+   renderer->ResetCamera();
+
+   // Setup render window
+   vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
+   renderWindow->SetSize(1000, 1000);
+
+   renderWindow->AddRenderer(renderer);
+
+   // Setting Window Image Interactor
    vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
        vtkSmartPointer<vtkRenderWindowInteractor>::New();
 
-   imageViewer->SetupInteractor(renderWindowInteractor);
+   vtkSmartPointer<vtkInteractorStyleImage> style = vtkSmartPointer<vtkInteractorStyleImage>::New();
+
+   renderWindowInteractor->SetInteractorStyle(style);
+
+   renderWindowInteractor->SetRenderWindow(renderWindow);
 
    // Setting Slider Representation
    vtkSmartPointer<vtkSliderRepresentation2D> sliderRep =
@@ -111,16 +130,14 @@ int main(int argc, char *argv[])
    vtkSmartPointer<vtkSliderCallback> callback =
        vtkSmartPointer<vtkSliderCallback>::New();
 
-   callback->_ImageViewer = imageViewer;
+   callback->slicer = imageSliceMapper;
 
    sliderWidget->AddObserver(vtkCommand::InteractionEvent, callback);
 
    // Rendering
 
    renderWindowInteractor->Initialize();
-   imageViewer->Render();
-   imageViewer->GetRenderer()->ResetCamera();
-   imageViewer->Render();
+   renderWindow->Render();
    renderWindowInteractor->Start();
 
    return EXIT_SUCCESS;
