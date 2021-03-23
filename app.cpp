@@ -48,8 +48,8 @@ int main(int argc, char *argv[])
 
     // Setting Colors
     // Tissues
-    // std::array<unsigned char, 4> tissueColor{{255, 125, 64}};
-    // colors->SetColor("TissueColor", tissueColor.data());
+    std::array<unsigned char, 4> tissueColor{{255, 125, 64}};
+    colors->SetColor("TissueColor", tissueColor.data());
     // Bones
     std::array<unsigned char, 4> bkg{{21, 177, 102, 205}};
     colors->SetColor("BkgColor", bkg.data());
@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
     vtkSmartPointer<vtkActor> elem =
         vtkSmartPointer<vtkActor>::New();
     elem->SetMapper(elemMapper);
-    elem->GetProperty()->SetDiffuseColor(colors->GetColor3d("bkg").GetData());
+    elem->GetProperty()->SetDiffuseColor(colors->GetColor3d("TissueColor").GetData());
     elem->GetProperty()->SetSpecular(.3);
     elem->GetProperty()->SetSpecularPower(20);
     elem->GetProperty()->SetOpacity(.85);
@@ -233,7 +233,7 @@ int main(int argc, char *argv[])
     // Setup renderers
     vtkSmartPointer<vtkRenderer> rendererStack = vtkSmartPointer<vtkRenderer>::New();
     rendererStack->AddViewProp(imageStack);
-    rendererStack->AddActor(outlineStackActor); //Optional
+    // rendererStack->AddActor(outlineStackActor); //Optional
     rendererStack->AddActor(elem);
     rendererStack->SetViewport(0, 0, 0.5, 0.5);
 
