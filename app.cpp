@@ -7,6 +7,7 @@
 #include <vtkImageViewer2.h>
 #include <vtkDICOMImageReader.h>
 #include <vtkInteractorStyleImage.h>
+#include <vtkActor.h>
 
 #include <vtkSliderWidget.h>
 #include <vtkSliderRepresentation2D.h>
@@ -21,46 +22,14 @@
 #include <vtkTextMapper.h>
 #include <vtkTextActor.h>
 
-// Helper class for formating slice status message
-class SlicingStatusMessage
-{
-public:
-    static std::string Format(int slice, int maxSlice, std::string name)
-    {
-        std::stringstream tmp;
-        tmp << name << " Slice  " << slice + 1 << "/" << maxSlice + 1;
-        return tmp.str();
-    }
-};
+#include <vtkPolyDataMapper.h>
+#include <vtkOutlineFilter.h>
 
-class vtkSliderCallback : public vtkCommand
-{
-public:
-    static vtkSliderCallback *New()
-    {
-        return new vtkSliderCallback;
-    }
-
-    virtual void Execute(vtkObject *caller, unsigned long, void *)
-    {
-        vtkSliderWidget *sliderWidget =
-            reinterpret_cast<vtkSliderWidget *>(caller);
-
-        this->z = static_cast<vtkSliderRepresentation *>(sliderWidget->GetRepresentation())->GetValue();
-        cout << "[" << name << "] -> Slice : " << z << std::endl;
-        slicer->SetSliceNumber(z);
-
-        std::string msg = SlicingStatusMessage::Format(z, sliderWidget->GetSliderRepresentation()->GetMaximumValue(), name);
-
-        statMapper->SetInput(msg.c_str());
-    }
-
-    vtkSliderCallback() : slicer(0), statMapper(0) {}
-    vtkImageSliceMapper *slicer;
-    std::string name;
-    vtkTextMapper *statMapper;
-    int z;
-};
+#include <vtkMarchingCubes.h>
+#include <vtkStripper.h>
+#include <vtkNamedColors.h>
+#include <vtkProperty.h>
+#include "utils.h"
 
 int main(int argc, char *argv[])
 {
@@ -72,6 +41,18 @@ int main(int argc, char *argv[])
     }
 
     std::string folder = argv[1];
+
+    // Setting Colors
+    vtkSmartPointer<vtkNamedColors> colors =
+        vtkSmartPointer<vtkNamedColors>::New();
+
+    // Setting Colors
+    // Tissues
+    // std::array<unsigned char, 4> tissueColor{{255, 125, 64}};
+    // colors->SetColor("TissueColor", tissueColor.data());
+    // Bones
+    std::array<unsigned char, 4> bkg{{21, 177, 102, 205}};
+    colors->SetColor("BkgColor", bkg.data());
 
     // Reading DICOM files within directory
     vtkSmartPointer<vtkDICOMImageReader> readerDCM =
@@ -163,30 +144,28 @@ int main(int argc, char *argv[])
 
     imageSlicerCoronal->Update();
 
-    // AXIAL BASE
+    // AXIAL 3D
     vtkSmartPointer<vtkImageSlice> imageSlicerAxial3D = vtkSmartPointer<vtkImageSlice>::New();
     imageSlicerAxial3D->SetMapper(imageSliceMapper);
     imageSlicerAxial3D->GetProperty()->SetOpacity(0.5);
-
-    imageSlicerAxial3D->RotateWXYZ(45, 1, 1, -1);
+    // imageSlicerAxial3D->RotateWXYZ(45, 1, 1, 1);
 
     imageSlicerAxial3D->Update();
 
-    // CORONAL BASE
+    // CORONAL 3D
     vtkSmartPointer<vtkImageSlice> imageSlicerCoronal3D = vtkSmartPointer<vtkImageSlice>::New();
     imageSlicerCoronal3D->SetMapper(imageSliceMapperCoronal);
     imageSlicerCoronal3D->GetProperty()->SetOpacity(0.5);
-
-    imageSlicerCoronal3D->RotateWXYZ(45, 1, 1, -1);
+    imageSlicerCoronal3D->GetProperty()->SetAmbient(22);
+    // imageSlicerCoronal3D->RotateWXYZ(45, 1, 1, 1);
 
     imageSlicerCoronal3D->Update();
 
-    // SAGITAL BASE
+    // SAGITAL 3D
     vtkSmartPointer<vtkImageSlice> imageSlicerSagital3D = vtkSmartPointer<vtkImageSlice>::New();
     imageSlicerSagital3D->SetMapper(imageSliceMapperSagital);
     imageSlicerSagital3D->GetProperty()->SetOpacity(0.5);
-
-    imageSlicerSagital3D->RotateWXYZ(45, 1, 1, -1);
+    // imageSlicerSagital3D->RotateWXYZ(45, 1, 1, 1);
 
     imageSlicerSagital3D->Update();
 
@@ -207,6 +186,29 @@ int main(int argc, char *argv[])
     rendererCoronal->AddViewProp(imageSlicerCoronal); // Actor
     rendererCoronal->SetViewport(0.5, 0, 1, 0.5);
 
+    // Elements extraction (Tissues, Bones etc..)
+    vtkSmartPointer<vtkMarchingCubes> elemExtractor =
+        vtkSmartPointer<vtkMarchingCubes>::New();
+    elemExtractor->SetInputConnection(readerDCM->GetOutputPort());
+    elemExtractor->SetValue(0, 1150);
+
+    vtkSmartPointer<vtkStripper> elemStripper =
+        vtkSmartPointer<vtkStripper>::New();
+    elemStripper->SetInputConnection(elemExtractor->GetOutputPort());
+
+    vtkSmartPointer<vtkPolyDataMapper> elemMapper =
+        vtkSmartPointer<vtkPolyDataMapper>::New();
+    elemMapper->SetInputConnection(elemStripper->GetOutputPort());
+    elemMapper->ScalarVisibilityOff();
+
+    vtkSmartPointer<vtkActor> elem =
+        vtkSmartPointer<vtkActor>::New();
+    elem->SetMapper(elemMapper);
+    elem->GetProperty()->SetDiffuseColor(colors->GetColor3d("bkg").GetData());
+    elem->GetProperty()->SetSpecular(.3);
+    elem->GetProperty()->SetSpecularPower(20);
+    elem->GetProperty()->SetOpacity(.85);
+
     // Stack 3D
     vtkSmartPointer<vtkImageStack> imageStack = vtkSmartPointer<vtkImageStack>::New();
     imageStack->AddImage(imageSlicerAxial3D);
@@ -215,9 +217,24 @@ int main(int argc, char *argv[])
 
     imageStack->SetActiveLayer(1);
 
+    // OUTLINE 3D STACK (Optional)
+    vtkSmartPointer<vtkOutlineFilter> outlineStack =
+        vtkSmartPointer<vtkOutlineFilter>::New();
+    outlineStack->SetInputConnection(readerDCM->GetOutputPort());
+
+    vtkSmartPointer<vtkPolyDataMapper> outlineStackMapper =
+        vtkSmartPointer<vtkPolyDataMapper>::New();
+    outlineStackMapper->SetInputConnection(outlineStack->GetOutputPort());
+
+    vtkSmartPointer<vtkActor> outlineStackActor =
+        vtkSmartPointer<vtkActor>::New();
+    outlineStackActor->SetMapper(outlineStackMapper);
+
     // Setup renderers
     vtkSmartPointer<vtkRenderer> rendererStack = vtkSmartPointer<vtkRenderer>::New();
     rendererStack->AddViewProp(imageStack);
+    rendererStack->AddActor(outlineStackActor); //Optional
+    rendererStack->AddActor(elem);
     rendererStack->SetViewport(0, 0, 0.5, 0.5);
 
     // Setup render window
@@ -233,7 +250,12 @@ int main(int argc, char *argv[])
     vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
         vtkSmartPointer<vtkRenderWindowInteractor>::New();
 
-    vtkSmartPointer<vtkInteractorStyleImage> style = vtkSmartPointer<vtkInteractorStyleImage>::New();
+    // vtkSmartPointer<vtkInteractorStyleImage> style = vtkSmartPointer<vtkInteractorStyleImage>::New();
+    // renderWindowInteractor->SetInteractorStyle(style);
+
+    vtkInteractorStyleTrackballCamera *style =
+        vtkInteractorStyleTrackballCamera::New();
+
     renderWindowInteractor->SetInteractorStyle(style);
 
     renderWindowInteractor->SetRenderWindow(renderWindow);
@@ -247,9 +269,9 @@ int main(int argc, char *argv[])
     sliderRep->SetTubeWidth(0.001);
     sliderRep->UseBoundsOn();
     sliderRep->GetPoint1Coordinate()->SetCoordinateSystemToDisplay();
-    sliderRep->GetPoint1Coordinate()->SetValue(65, 100);
+    sliderRep->GetPoint1Coordinate()->SetValue(45, 50);
     sliderRep->GetPoint2Coordinate()->SetCoordinateSystemToDisplay();
-    sliderRep->GetPoint2Coordinate()->SetValue(65, 400);
+    sliderRep->GetPoint2Coordinate()->SetValue(45, 450);
     sliderRep->SetSliderLength(0.013);
     sliderRep->SetSliderWidth(0.013);
     sliderRep->SetEndCapLength(0.0005);
@@ -270,9 +292,9 @@ int main(int argc, char *argv[])
     sliderRepS->SetTubeWidth(0.001);
     sliderRepS->UseBoundsOn();
     sliderRepS->GetPoint1Coordinate()->SetCoordinateSystemToDisplay();
-    sliderRepS->GetPoint1Coordinate()->SetValue(85, 100);
+    sliderRepS->GetPoint1Coordinate()->SetValue(65, 50);
     sliderRepS->GetPoint2Coordinate()->SetCoordinateSystemToDisplay();
-    sliderRepS->GetPoint2Coordinate()->SetValue(85, 400);
+    sliderRepS->GetPoint2Coordinate()->SetValue(65, 450);
     sliderRepS->SetSliderLength(0.013);
     sliderRepS->SetSliderWidth(0.013);
     sliderRepS->SetEndCapLength(0.0005);
@@ -287,9 +309,9 @@ int main(int argc, char *argv[])
     sliderRepC->SetTubeWidth(0.001);
     sliderRepC->UseBoundsOn();
     sliderRepC->GetPoint1Coordinate()->SetCoordinateSystemToDisplay();
-    sliderRepC->GetPoint1Coordinate()->SetValue(105, 100);
+    sliderRepC->GetPoint1Coordinate()->SetValue(85, 50);
     sliderRepC->GetPoint2Coordinate()->SetCoordinateSystemToDisplay();
-    sliderRepC->GetPoint2Coordinate()->SetValue(105, 400);
+    sliderRepC->GetPoint2Coordinate()->SetValue(85, 450);
     sliderRepC->SetSliderLength(0.013);
     sliderRepC->SetSliderWidth(0.013);
     sliderRepC->SetEndCapLength(0.0005);
